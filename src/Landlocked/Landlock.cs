@@ -48,11 +48,50 @@ public static class Landlock
             AddPathRule(ruleset, rule);
         }
 
-        var privilegesResult = LinuxNative.SetNoNewPrivilegesForCallingThread();
-        ThrowIfFailed(privilegesResult, "set no_new_privs");
+        EnforceProcessWide(ruleset.Descriptor);
+    }
 
-        var restrictResult = LinuxNative.RestrictAllThreads(ruleset.Descriptor);
-        ThrowIfFailed(restrictResult, "restrict all process threads");
+    private static void EnforceProcessWide(int rulesetDescriptor)
+    {
+        NativeResult privilegesResult = default;
+        NativeResult restrictResult = default;
+        var restrictionAttempted = false;
+        Exception? enforcementFailure = null;
+
+        // Keep the irreversible no_new_privs prerequisite on a disposable thread unless TSYNC succeeds process-wide.
+        var enforcementThread = new Thread(() =>
+        {
+            try
+            {
+                privilegesResult = LinuxNative.SetNoNewPrivilegesForCallingThread();
+                if (privilegesResult.Value < 0)
+                {
+                    return;
+                }
+
+                restrictionAttempted = true;
+                restrictResult = LinuxNative.RestrictAllThreads(rulesetDescriptor);
+            }
+            catch (Exception exception)
+            {
+                enforcementFailure = exception;
+            }
+        });
+
+        enforcementThread.IsBackground = true;
+        enforcementThread.Start();
+        enforcementThread.Join();
+
+        if (enforcementFailure is not null)
+        {
+            throw new InvalidOperationException("The Landlock enforcement thread failed.", enforcementFailure);
+        }
+
+        ThrowIfFailed(privilegesResult, "set no_new_privs");
+        if (restrictionAttempted)
+        {
+            ThrowIfFailed(restrictResult, "restrict all process threads");
+        }
     }
 
     private static unsafe void AddPathRule(SafeFileDescriptor ruleset, PathAccessRule rule)

@@ -68,8 +68,10 @@ when relevant. `Landlock.Restrict` throws:
 - `LandlockException` when a native policy operation fails. It includes the operation and Linux `errno`.
 - Argument exceptions when a policy is empty, contains unknown rights, or allows rights it does not handle.
 
-A failed ruleset or path-rule operation does not install that policy layer. Successful restrictions are irreversible
-and inherited by child threads and processes.
+A failed operation does not install that policy layer. The irreversible `no_new_privs` prerequisite and final TSYNC
+call run on a disposable enforcement thread: on success TSYNC propagates both process-wide; on failure the helper
+thread exits without leaving the original caller partially restricted. Successful restrictions are irreversible and
+inherited by child threads and processes.
 
 ## Security boundaries
 
@@ -79,7 +81,11 @@ Landlock mediates new access; it does not revoke capabilities already represente
   directory, socket, and device descriptors before tightening a phase.
 - Existing network connections remain usable. This version exposes filesystem policies only.
 - Policy roots may not contain symbolic links. Landlocked resolves them with `openat2(RESOLVE_NO_SYMLINKS)` and
-  fails the policy instead of silently granting access to a target outside the named hierarchy.
+  fails the policy instead of silently following a link to another hierarchy.
+- Rules follow filesystem objects and the existing mount topology, not purely lexical paths. A bind mount beneath
+  an allowed root and another bind alias of that hierarchy can carry the same access. Finalize and trust the mount
+  namespace before restriction; `RESOLVE_NO_XDEV` cannot eliminate descendant or external aliases and would reject
+  useful roots reached through ordinary mount points. OverlayFS layers are independent Landlock hierarchies.
 - Do not mix Landlocked with code that directly installs per-thread Landlock domains. ABI 8 TSYNC intentionally
   replaces sibling threads' domains; a less-restricted caller could therefore broaden an independently restricted
   sibling. Process-wide monotonicity requires all policy changes to go through Landlocked.

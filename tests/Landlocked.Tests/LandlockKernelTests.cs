@@ -8,10 +8,7 @@ public sealed class LandlockKernelTests
     [Fact]
     public async Task Current_directory_can_be_writable_while_sibling_file_is_read_only()
     {
-        if (!Landlock.GetSupport().IsAvailable)
-        {
-            return;
-        }
+        RequireLandlock();
 
         using var fixture = new TemporaryDirectory();
         var writable = Directory.CreateDirectory(Path.Combine(fixture.Path, "writable")).FullName;
@@ -27,10 +24,7 @@ public sealed class LandlockKernelTests
     [Fact]
     public async Task Later_policy_layer_can_only_tighten_access()
     {
-        if (!Landlock.GetSupport().IsAvailable)
-        {
-            return;
-        }
+        RequireLandlock();
 
         using var fixture = new TemporaryDirectory();
         var broadDirectory = Directory.CreateDirectory(Path.Combine(fixture.Path, "broad")).FullName;
@@ -49,10 +43,7 @@ public sealed class LandlockKernelTests
     [Fact]
     public async Task Descriptor_opened_before_restriction_retains_its_access()
     {
-        if (!Landlock.GetSupport().IsAvailable)
-        {
-            return;
-        }
+        RequireLandlock();
 
         using var fixture = new TemporaryDirectory();
         var file = Path.Combine(fixture.Path, "existing.txt");
@@ -66,10 +57,7 @@ public sealed class LandlockKernelTests
     [Fact]
     public async Task Restriction_is_applied_to_threads_created_before_it()
     {
-        if (!Landlock.GetSupport().IsAvailable)
-        {
-            return;
-        }
+        RequireLandlock();
 
         using var fixture = new TemporaryDirectory();
         var file = Path.Combine(fixture.Path, "thread.txt");
@@ -83,10 +71,7 @@ public sealed class LandlockKernelTests
     [Fact]
     public async Task Failed_policy_application_does_not_report_or_apply_a_restriction()
     {
-        if (!Landlock.GetSupport().IsAvailable)
-        {
-            return;
-        }
+        RequireLandlock();
 
         using var fixture = new TemporaryDirectory();
         var missingPath = Path.Combine(fixture.Path, "missing");
@@ -101,10 +86,7 @@ public sealed class LandlockKernelTests
     [Fact]
     public async Task Symbolic_link_rule_is_rejected_without_installing_a_policy()
     {
-        if (!Landlock.GetSupport().IsAvailable)
-        {
-            return;
-        }
+        RequireLandlock();
 
         using var fixture = new TemporaryDirectory();
         var target = Directory.CreateDirectory(Path.Combine(fixture.Path, "target")).FullName;
@@ -121,10 +103,7 @@ public sealed class LandlockKernelTests
     [Fact]
     public async Task Concurrent_policy_layers_are_serialized_and_intersected()
     {
-        if (!Landlock.GetSupport().IsAvailable)
-        {
-            return;
-        }
+        RequireLandlock();
 
         using var fixture = new TemporaryDirectory();
         var firstDirectory = Directory.CreateDirectory(Path.Combine(fixture.Path, "first")).FullName;
@@ -138,6 +117,15 @@ public sealed class LandlockKernelTests
 
         Assert.Equal(string.Empty, File.ReadAllText(firstFile));
         Assert.Equal(string.Empty, File.ReadAllText(secondFile));
+    }
+
+    private static void RequireLandlock()
+    {
+        var support = Landlock.GetSupport();
+        if (!support.IsAvailable)
+        {
+            Assert.Skip(support.Reason);
+        }
     }
 
     private static async Task RunScenario(string scenario, params string[] arguments)
@@ -173,13 +161,17 @@ public sealed class LandlockKernelTests
 
     private static string FindTestHost()
     {
+        var targetFrameworkDirectory = new DirectoryInfo(AppContext.BaseDirectory);
+        var configurationDirectory = targetFrameworkDirectory.Parent;
+        Assert.NotNull(configurationDirectory);
+
         var repositoryRoot = Path.GetFullPath("../../../../..", AppContext.BaseDirectory);
         var host = Path.Combine(
             repositoryRoot,
             "tests",
             "Landlocked.TestHost",
             "bin",
-            "Debug",
+            configurationDirectory.Name,
             "net10.0",
             "Landlocked.TestHost.dll");
         Assert.True(File.Exists(host), $"Test host not found: {host}");
