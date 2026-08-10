@@ -58,6 +58,40 @@ Landlock.Restrict(
     LandlockPolicy.Handle(FileSystemAccess.ContentAndHierarchyMutation));
 ```
 
+### Independent permission claims
+
+Use claims when separate modules know only the permissions they require. The application chooses the fixed access set
+that Landlock will mediate, and each module registers its own allowance before activation:
+
+```csharp
+var permissions = LandlockPermissions.Handle(
+    FileSystemAccess.ContentAndHierarchyMutation);
+
+var compiler = permissions
+    .Claim("compiler")
+    .Allow(workspace, FileSystemAccess.ContentAndHierarchyMutation)
+    .Allow(compilerCache, FileSystemAccess.ContentAndHierarchyMutation);
+
+var reporter = permissions
+    .Claim("reporter")
+    .Allow(outputDirectory, FileSystemAccess.ContentAndHierarchyMutation);
+
+permissions.Activate();
+
+// The compiler does not need to reproduce the reporter's policy.
+compiler.Release();
+```
+
+`Activate` installs the union of all active claims. `Release` recomputes that union and synchronously installs a
+narrower process-wide layer. Access remains while any active claim allows the same path and rights. Claims cannot be
+added or changed after activation because Landlock cannot restore access; releasing before activation simply omits
+that claim from the initial union.
+
+Releases are idempotent and serialized. A failed kernel operation leaves the claim active and retryable. Releasing a
+claim whose exact path-and-right allowances are still supplied by other claims does not install a redundant layer.
+An effective release does consume one of Linux's maximum 16 stacked Landlock layers, including the activation layer,
+so claim lifetimes should represent coarse application phases rather than individual operations.
+
 ## Support and failures
 
 `Landlock.GetSupport()` reports the detected ABI, supported filesystem rights, availability state, and native error

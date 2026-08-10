@@ -38,6 +38,18 @@ try
         case "concurrent-layers":
             RunConcurrentLayers(args[1], args[2], args[3], args[4]);
             break;
+        case "permission-claims":
+            RunPermissionClaims(args[1], args[2], args[3], args[4], args[5], args[6]);
+            break;
+        case "redundant-claims":
+            RunRedundantClaims(args[1], args[2]);
+            break;
+        case "concurrent-claim-release":
+            RunConcurrentClaimRelease(args[1], args[2], args[3], args[4]);
+            break;
+        case "failed-claim-release":
+            RunFailedClaimRelease(args[1], args[2]);
+            break;
         default:
             Console.Error.WriteLine($"Unknown scenario: {args[0]}");
             return 2;
@@ -228,6 +240,172 @@ static void RunConcurrentLayers(string firstDirectory, string secondDirectory, s
 
     ExpectAccessDenied(() => File.AppendAllText(firstFile, "first\n"));
     ExpectAccessDenied(() => File.AppendAllText(secondFile, "second\n"));
+}
+
+static void RunPermissionClaims(
+    string firstDirectory,
+    string secondDirectory,
+    string sharedDirectory,
+    string firstFile,
+    string secondFile,
+    string sharedFile)
+{
+    var permissions = LandlockPermissions.Handle(FileSystemAccess.ContentAndHierarchyMutation);
+    var firstClaim = permissions
+        .Claim("first")
+        .Allow(firstDirectory, FileSystemAccess.ContentAndHierarchyMutation)
+        .Allow(sharedDirectory, FileSystemAccess.ContentAndHierarchyMutation);
+    var secondClaim = permissions
+        .Claim("second")
+        .Allow(secondDirectory, FileSystemAccess.ContentAndHierarchyMutation)
+        .Allow(sharedDirectory, FileSystemAccess.ContentAndHierarchyMutation);
+
+    permissions.Activate();
+
+    File.AppendAllText(firstFile, "initial\n");
+    File.AppendAllText(secondFile, "initial\n");
+    File.AppendAllText(sharedFile, "initial\n");
+
+    ExpectInvalidOperation(() => permissions.Claim("late"));
+    ExpectInvalidOperation(() => firstClaim.Allow(firstDirectory, FileSystemAccess.WriteFile));
+
+    firstClaim.Release();
+    firstClaim.Release();
+    if (!firstClaim.IsReleased)
+    {
+        throw new InvalidOperationException("The released claim remained active.");
+    }
+
+    ExpectAccessDenied(() => File.AppendAllText(firstFile, "after-first\n"));
+    File.AppendAllText(secondFile, "after-first\n");
+    File.AppendAllText(sharedFile, "after-first\n");
+
+    secondClaim.Release();
+    ExpectAccessDenied(() => File.AppendAllText(secondFile, "after-second\n"));
+    ExpectAccessDenied(() => File.AppendAllText(sharedFile, "after-second\n"));
+}
+
+static void RunRedundantClaims(string sharedDirectory, string sharedFile)
+{
+    var permissions = LandlockPermissions.Handle(FileSystemAccess.ContentAndHierarchyMutation);
+    var claims = Enumerable
+        .Range(0, 32)
+        .Select(index => permissions
+            .Claim($"shared-{index}")
+            .Allow(sharedDirectory, FileSystemAccess.ContentAndHierarchyMutation))
+        .ToArray();
+
+    permissions.Activate();
+
+    foreach (var claim in claims[..^1])
+    {
+        claim.Release();
+    }
+
+    File.AppendAllText(sharedFile, "last-claim-retains-access\n");
+    claims[^1].Release();
+    ExpectAccessDenied(() => File.AppendAllText(sharedFile, "released\n"));
+}
+
+static void RunConcurrentClaimRelease(
+    string firstDirectory,
+    string secondDirectory,
+    string firstFile,
+    string secondFile)
+{
+    var permissions = LandlockPermissions.Handle(FileSystemAccess.ContentAndHierarchyMutation);
+    var firstClaim = permissions
+        .Claim("first")
+        .Allow(firstDirectory, FileSystemAccess.ContentAndHierarchyMutation);
+    var secondClaim = permissions
+        .Claim("second")
+        .Allow(secondDirectory, FileSystemAccess.ContentAndHierarchyMutation);
+    permissions.Activate();
+
+    Exception? firstFailure = null;
+    Exception? secondFailure = null;
+    using var start = new ManualResetEventSlim();
+    var firstThread = new Thread(() => ReleaseClaim(firstClaim, start, exception => firstFailure = exception));
+    var secondThread = new Thread(() => ReleaseClaim(secondClaim, start, exception => secondFailure = exception));
+
+    firstThread.Start();
+    secondThread.Start();
+    start.Set();
+    firstThread.Join();
+    secondThread.Join();
+
+    if (firstFailure is not null || secondFailure is not null)
+    {
+        throw new AggregateException(
+            "A concurrent claim release failed.",
+            new[] { firstFailure, secondFailure }.OfType<Exception>());
+    }
+
+    ExpectAccessDenied(() => File.AppendAllText(firstFile, "first\n"));
+    ExpectAccessDenied(() => File.AppendAllText(secondFile, "second\n"));
+}
+
+static void RunFailedClaimRelease(string writableDirectory, string writableFile)
+{
+    var permissions = LandlockPermissions.Handle(FileSystemAccess.ContentAndHierarchyMutation);
+    var claim = permissions
+        .Claim("writable")
+        .Allow(writableDirectory, FileSystemAccess.ContentAndHierarchyMutation);
+    permissions.Activate();
+
+    var retainingPolicy = LandlockPolicy
+        .Handle(FileSystemAccess.ContentAndHierarchyMutation)
+        .Allow(writableDirectory, FileSystemAccess.ContentAndHierarchyMutation);
+    for (var layer = 1; layer < 16; layer++)
+    {
+        Landlock.Restrict(retainingPolicy);
+    }
+
+    try
+    {
+        claim.Release();
+        throw new InvalidOperationException("The claim release unexpectedly succeeded at the kernel layer limit.");
+    }
+    catch (LandlockException exception) when (exception.NativeErrorCode == 7)
+    {
+    }
+
+    if (claim.IsReleased)
+    {
+        throw new InvalidOperationException("A failed release committed the claim state.");
+    }
+
+    File.AppendAllText(writableFile, "claim-remains-active\n");
+}
+
+static void ReleaseClaim(
+    LandlockPermissionClaim claim,
+    ManualResetEventSlim start,
+    Action<Exception> recordFailure)
+{
+    start.Wait();
+    try
+    {
+        claim.Release();
+    }
+    catch (Exception exception)
+    {
+        recordFailure(exception);
+    }
+}
+
+static void ExpectInvalidOperation(Action action)
+{
+    try
+    {
+        action();
+    }
+    catch (InvalidOperationException)
+    {
+        return;
+    }
+
+    throw new InvalidOperationException("The invalid state transition unexpectedly succeeded.");
 }
 
 static void ExpectAccessDenied(Action action)

@@ -119,6 +119,85 @@ public sealed class LandlockKernelTests
         Assert.Equal(string.Empty, File.ReadAllText(secondFile));
     }
 
+    [Fact]
+    public async Task Releasing_a_claim_preserves_permissions_required_by_other_modules()
+    {
+        RequireLandlock();
+
+        using var fixture = new TemporaryDirectory();
+        var firstDirectory = Directory.CreateDirectory(Path.Combine(fixture.Path, "first")).FullName;
+        var secondDirectory = Directory.CreateDirectory(Path.Combine(fixture.Path, "second")).FullName;
+        var sharedDirectory = Directory.CreateDirectory(Path.Combine(fixture.Path, "shared")).FullName;
+        var firstFile = Path.Combine(firstDirectory, "first.txt");
+        var secondFile = Path.Combine(secondDirectory, "second.txt");
+        var sharedFile = Path.Combine(sharedDirectory, "shared.txt");
+        File.WriteAllText(firstFile, string.Empty);
+        File.WriteAllText(secondFile, string.Empty);
+        File.WriteAllText(sharedFile, string.Empty);
+
+        await RunScenario(
+            "permission-claims",
+            firstDirectory,
+            secondDirectory,
+            sharedDirectory,
+            firstFile,
+            secondFile,
+            sharedFile);
+
+        Assert.Equal("initial\n", File.ReadAllText(firstFile));
+        Assert.Equal("initial\nafter-first\n", File.ReadAllText(secondFile));
+        Assert.Equal("initial\nafter-first\n", File.ReadAllText(sharedFile));
+    }
+
+    [Fact]
+    public async Task Redundant_claim_releases_do_not_consume_kernel_policy_layers()
+    {
+        RequireLandlock();
+
+        using var fixture = new TemporaryDirectory();
+        var sharedDirectory = Directory.CreateDirectory(Path.Combine(fixture.Path, "shared")).FullName;
+        var sharedFile = Path.Combine(sharedDirectory, "shared.txt");
+        File.WriteAllText(sharedFile, string.Empty);
+
+        await RunScenario("redundant-claims", sharedDirectory, sharedFile);
+
+        Assert.Equal("last-claim-retains-access\n", File.ReadAllText(sharedFile));
+    }
+
+    [Fact]
+    public async Task Concurrent_claim_releases_are_serialized()
+    {
+        RequireLandlock();
+
+        using var fixture = new TemporaryDirectory();
+        var firstDirectory = Directory.CreateDirectory(Path.Combine(fixture.Path, "first")).FullName;
+        var secondDirectory = Directory.CreateDirectory(Path.Combine(fixture.Path, "second")).FullName;
+        var firstFile = Path.Combine(firstDirectory, "first.txt");
+        var secondFile = Path.Combine(secondDirectory, "second.txt");
+        File.WriteAllText(firstFile, string.Empty);
+        File.WriteAllText(secondFile, string.Empty);
+
+        await RunScenario("concurrent-claim-release", firstDirectory, secondDirectory, firstFile, secondFile);
+
+        Assert.Equal(string.Empty, File.ReadAllText(firstFile));
+        Assert.Equal(string.Empty, File.ReadAllText(secondFile));
+    }
+
+    [Fact]
+    public async Task Failed_claim_release_remains_active_and_retryable()
+    {
+        RequireLandlock();
+
+        using var fixture = new TemporaryDirectory();
+        var writableDirectory = Directory.CreateDirectory(Path.Combine(fixture.Path, "writable")).FullName;
+        var writableFile = Path.Combine(writableDirectory, "writable.txt");
+        File.WriteAllText(writableFile, string.Empty);
+
+        await RunScenario("failed-claim-release", writableDirectory, writableFile);
+
+        Assert.Equal("claim-remains-active\n", File.ReadAllText(writableFile));
+    }
+
     private static void RequireLandlock()
     {
         var support = Landlock.GetSupport();
