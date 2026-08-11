@@ -1,8 +1,10 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/Landlocked.DependencyInjection/Landlocked.DependencyInjection.csproj" />
     <Project Path="src/Landlocked/Landlocked.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/Landlocked.DependencyInjection.Tests/Landlocked.DependencyInjection.Tests.csproj" />
     <Project Path="tests/Landlocked.TestHost/Landlocked.TestHost.csproj" />
     <Project Path="tests/Landlocked.Tests/Landlocked.Tests.csproj" />
   </Folder>

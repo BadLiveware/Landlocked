@@ -1,4 +1,6 @@
 using Landlocked;
+using Landlocked.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection;
 
 if (args.Length == 0)
 {
@@ -49,6 +51,9 @@ try
             break;
         case "failed-claim-release":
             RunFailedClaimRelease(args[1], args[2]);
+            break;
+        case "di-permission-contributors":
+            RunDependencyInjectionContributors(args[1], args[2], args[3], args[4], args[5], args[6]);
             break;
         default:
             Console.Error.WriteLine($"Unknown scenario: {args[0]}");
@@ -378,6 +383,59 @@ static void RunFailedClaimRelease(string writableDirectory, string writableFile)
     File.AppendAllText(writableFile, "claim-remains-active\n");
 }
 
+static void RunDependencyInjectionContributors(
+    string firstDirectory,
+    string secondDirectory,
+    string sharedDirectory,
+    string firstFile,
+    string secondFile,
+    string sharedFile)
+{
+    var services = new ServiceCollection();
+    services.AddLandlocked(FileSystemAccess.ContentAndHierarchyMutation);
+    services.AddSingleton(new ContributorPaths(firstDirectory, secondDirectory, sharedDirectory));
+    services.AddLandlockPermissionContributor<FirstPermissionContributor>();
+    services.AddLandlockPermissionContributor<SecondPermissionContributor>();
+
+    using var provider = services.BuildServiceProvider();
+    var first = provider.GetRequiredService<FirstPermissionContributor>();
+    var second = provider.GetRequiredService<SecondPermissionContributor>();
+    var registeredContributors = provider.GetServices<ILandlockPermissionContributor>().ToArray();
+    if (!registeredContributors.Contains(first) || !registeredContributors.Contains(second))
+    {
+        throw new InvalidOperationException("DI did not preserve contributor singleton identity.");
+    }
+
+    ExpectInvalidOperation(first.Release);
+
+    var permissions = provider.ActivateLandlock();
+    if (!ReferenceEquals(permissions, provider.ActivateLandlock()))
+    {
+        throw new InvalidOperationException("Repeated DI activation returned another permission coordinator.");
+    }
+
+    var firstRegistrationCount = registeredContributors
+        .OfType<FirstPermissionContributor>()
+        .Sum(contributor => contributor.RegistrationCount);
+    if (firstRegistrationCount != 1 || second.RegistrationCount != 1)
+    {
+        throw new InvalidOperationException("A contributor was invoked more than once.");
+    }
+
+    File.AppendAllText(firstFile, "initial\n");
+    File.AppendAllText(secondFile, "initial\n");
+    File.AppendAllText(sharedFile, "initial\n");
+
+    first.Release();
+    ExpectAccessDenied(() => File.AppendAllText(firstFile, "after-first\n"));
+    File.AppendAllText(secondFile, "after-first\n");
+    File.AppendAllText(sharedFile, "after-first\n");
+
+    second.Release();
+    ExpectAccessDenied(() => File.AppendAllText(secondFile, "after-second\n"));
+    ExpectAccessDenied(() => File.AppendAllText(sharedFile, "after-second\n"));
+}
+
 static void ReleaseClaim(
     LandlockPermissionClaim claim,
     ManualResetEventSlim start,
@@ -420,4 +478,47 @@ static void ExpectAccessDenied(Action action)
     }
 
     throw new InvalidOperationException("The operation unexpectedly succeeded.");
+}
+
+internal sealed record ContributorPaths(
+    string FirstDirectory,
+    string SecondDirectory,
+    string SharedDirectory);
+
+internal sealed class FirstPermissionContributor(ContributorPaths paths) : ILandlockPermissionContributor
+{
+    private LandlockPermissionClaim? _claim;
+
+    internal int RegistrationCount { get; private set; }
+
+    public void RegisterPermissions(ILandlockPermissionRegistry permissions)
+    {
+        RegistrationCount++;
+        _claim = permissions
+            .Claim("first")
+            .Allow(paths.FirstDirectory, FileSystemAccess.ContentAndHierarchyMutation)
+            .Allow(paths.SharedDirectory, FileSystemAccess.ContentAndHierarchyMutation);
+    }
+
+    internal void Release() =>
+        (_claim ?? throw new InvalidOperationException("Landlock permissions have not been activated.")).Release();
+}
+
+internal sealed class SecondPermissionContributor(ContributorPaths paths) : ILandlockPermissionContributor
+{
+    private LandlockPermissionClaim? _claim;
+
+    internal int RegistrationCount { get; private set; }
+
+    public void RegisterPermissions(ILandlockPermissionRegistry permissions)
+    {
+        RegistrationCount++;
+        _claim = permissions
+            .Claim("second")
+            .Allow(paths.SecondDirectory, FileSystemAccess.ContentAndHierarchyMutation)
+            .Allow(paths.SharedDirectory, FileSystemAccess.ContentAndHierarchyMutation);
+    }
+
+    internal void Release() =>
+        (_claim ?? throw new InvalidOperationException("Landlock permissions have not been activated.")).Release();
 }

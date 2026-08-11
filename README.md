@@ -92,6 +92,59 @@ claim whose exact path-and-right allowances are still supplied by other claims d
 An effective release does consume one of Linux's maximum 16 stacked Landlock layers, including the activation layer,
 so claim lifetimes should represent coarse application phases rather than individual operations.
 
+### Dependency injection
+
+The optional `Landlocked.DependencyInjection` package discovers permission contributors from a Microsoft dependency
+injection service provider while keeping the core `Landlocked` package dependency-free. Each module implements the
+contributor interface and retains only its own claim:
+
+```csharp
+using Landlocked.DependencyInjection;
+
+public sealed class CompilerPermissions(CompilerOptions options)
+    : ILandlockPermissionContributor
+{
+    private LandlockPermissionClaim? _claim;
+
+    public void RegisterPermissions(ILandlockPermissionRegistry permissions)
+    {
+        _claim = permissions
+            .Claim("compiler")
+            .Allow(
+                options.Workspace,
+                FileSystemAccess.ContentAndHierarchyMutation);
+    }
+
+    public void Release() =>
+        (_claim ?? throw new InvalidOperationException(
+            "Landlock permissions have not been activated."))
+        .Release();
+}
+```
+
+Register the fixed handled access set and each contributor before building the service provider, then activate the
+combined policy before starting work that depends on the sandbox:
+
+```csharp
+services.AddLandlocked(FileSystemAccess.ContentAndHierarchyMutation);
+services.AddLandlockPermissionContributor<CompilerPermissions>();
+
+using var serviceProvider = services.BuildServiceProvider();
+var permissions = serviceProvider.ActivateLandlock();
+```
+
+`AddLandlockPermissionContributor<T>` registers `T` as a singleton and exposes that same instance through
+`ILandlockPermissionContributor`, so the module can inject its concrete permission service and later call `Release`.
+The contributor receives only `ILandlockPermissionRegistry`; it can declare claims but cannot activate the process or
+inspect other contributors. Do not replace its concrete DI registration after
+`AddLandlockPermissionContributor<T>`—activation detects and rejects lifetime or identity changes. Contributor
+construction and registration must not recursively activate Landlock. A contributor failure is terminal for that
+service provider because earlier modules may retain claims from the abandoned registration; rebuild the provider
+after correcting it.
+
+Repeated `ActivateLandlock` calls return the original coordinator without adding another kernel layer. A failed kernel
+activation can be retried without invoking successfully collected contributors again.
+
 ## Support and failures
 
 `Landlock.GetSupport()` reports the detected ABI, supported filesystem rights, availability state, and native error
