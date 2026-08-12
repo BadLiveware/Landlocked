@@ -46,6 +46,20 @@ public sealed class LandlockPolicyTests
     }
 
     [Fact]
+    public void Directory_paths_with_and_without_trailing_separators_are_merged()
+    {
+        var directory = Path.GetFullPath(".");
+        var policy = LandlockPolicy
+            .Handle(FileSystemAccess.ContentAndHierarchyMutation)
+            .Allow(directory, FileSystemAccess.WriteFile)
+            .Allow(directory + Path.DirectorySeparatorChar, FileSystemAccess.Truncate);
+
+        var rule = Assert.Single(policy.Rules);
+        Assert.Equal(directory, rule.Path);
+        Assert.Equal(FileSystemAccess.WriteFile | FileSystemAccess.Truncate, rule.AllowedAccess);
+    }
+
+    [Fact]
     public void Existing_default_handle_call_remains_unambiguous()
     {
         Assert.Throws<ArgumentException>(() => LandlockPolicy.Handle(default));

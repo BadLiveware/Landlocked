@@ -73,7 +73,7 @@ public sealed class LandlockPolicy
                 nameof(allowedAccess));
         }
 
-        var fullPath = Path.GetFullPath(path);
+        var fullPath = Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
         var existingIndex = -1;
         for (var index = 0; index < _pathRules.Length; index++)
         {
