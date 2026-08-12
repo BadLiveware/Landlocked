@@ -5,8 +5,9 @@ namespace Landlocked;
 public static class Landlock
 {
     private const int AddressFamilyNotSupported = 97;
+    private const string RestrictionLockKey = "Landlocked.RestrictionLock";
     internal const int MinimumProcessSynchronizationAbi = 8;
-    private static readonly Lock RestrictionLock = new();
+    private static readonly object RestrictionLock = GetRestrictionLock();
 
     public static LandlockSupport GetSupport() => LandlockSupport.Detect();
 
@@ -17,6 +18,22 @@ public static class Landlock
         lock (RestrictionLock)
         {
             RestrictCore(policy);
+        }
+    }
+
+    private static object GetRestrictionLock()
+    {
+        var currentDomain = AppDomain.CurrentDomain;
+        lock (currentDomain)
+        {
+            if (currentDomain.GetData(RestrictionLockKey) is object existingLock)
+            {
+                return existingLock;
+            }
+
+            var restrictionLock = new object();
+            currentDomain.SetData(RestrictionLockKey, restrictionLock);
+            return restrictionLock;
         }
     }
 

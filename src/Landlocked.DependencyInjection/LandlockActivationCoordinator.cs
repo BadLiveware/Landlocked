@@ -1,3 +1,5 @@
+using System.Runtime.ExceptionServices;
+
 namespace Landlocked.DependencyInjection;
 
 internal sealed class LandlockActivationCoordinator
@@ -7,7 +9,7 @@ internal sealed class LandlockActivationCoordinator
     private readonly LandlockRegistrationConfiguration _configuration;
     private LandlockPermissions? _configuredPermissions;
     private LandlockPermissions? _activatedPermissions;
-    private Exception? _registrationFailure;
+    private ExceptionDispatchInfo? _registrationFailure;
     private bool _isRegistering;
 
     internal LandlockActivationCoordinator(
@@ -32,10 +34,7 @@ internal sealed class LandlockActivationCoordinator
                 throw new InvalidOperationException("Landlock activation cannot be called from a permission contributor.");
             }
 
-            if (_registrationFailure is not null)
-            {
-                throw _registrationFailure;
-            }
+            _registrationFailure?.Throw();
 
             var permissions = _configuredPermissions ?? RegisterPermissions();
             permissions.Activate();
@@ -65,10 +64,17 @@ internal sealed class LandlockActivationCoordinator
         }
         catch (Exception exception)
         {
-            _registrationFailure = new InvalidOperationException(
-                "Landlock permission contributor registration failed and cannot be retried.",
-                exception);
-            throw _registrationFailure;
+            try
+            {
+                throw new InvalidOperationException(
+                    "Landlock permission contributor registration failed and cannot be retried.",
+                    exception);
+            }
+            catch (InvalidOperationException registrationFailure)
+            {
+                _registrationFailure = ExceptionDispatchInfo.Capture(registrationFailure);
+                throw;
+            }
         }
         finally
         {

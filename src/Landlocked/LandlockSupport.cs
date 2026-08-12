@@ -33,7 +33,7 @@ public readonly record struct LandlockSupport(
 
                     return "The kernel did not provide Landlock.";
                 case LandlockAvailability.ProcessSynchronizationUnavailable:
-                    return $"Landlock ABI {AbiVersion} is available, but ABI 8 or newer is required to restrict every existing CLR thread.";
+                    return $"Landlock ABI {AbiVersion} is available, but ABI {Landlock.MinimumProcessSynchronizationAbi} or newer is required to restrict every existing CLR thread.";
                 default:
                     return "Landlock support could not be determined.";
             }
@@ -95,7 +95,7 @@ public readonly record struct LandlockSupport(
         };
     }
 
-    private static FileSystemAccess SupportedFileSystemAccessForAbi(int abiVersion)
+    internal static FileSystemAccess SupportedFileSystemAccessForAbi(int abiVersion)
     {
         var supported = FileSystemAccess.Execute |
                         FileSystemAccess.WriteFile |
@@ -134,9 +134,13 @@ public readonly record struct LandlockSupport(
         return supported;
     }
 
-    private static NetworkAccess SupportedNetworkAccessForAbi(int abiVersion)
+    internal static NetworkAccess SupportedNetworkAccessForAbi(int abiVersion)
     {
-        var supported = abiVersion >= 4 ? NetworkAccess.Tcp : NetworkAccess.None;
+        var supported = NetworkAccess.None;
+        if (abiVersion >= 4)
+        {
+            supported |= NetworkAccess.Tcp;
+        }
         if (abiVersion >= 10)
         {
             supported |= NetworkAccess.Udp;

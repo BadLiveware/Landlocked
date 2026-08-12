@@ -45,6 +45,9 @@ try
         case "permission-claims":
             RunPermissionClaims(args[1], args[2], args[3], args[4], args[5], args[6]);
             break;
+        case "empty-permission-claims":
+            RunEmptyPermissionClaims(args[1]);
+            break;
         case "redundant-claims":
             RunRedundantClaims(args[1], args[2]);
             break;
@@ -470,6 +473,23 @@ static void RunTcpNetworkPolicy()
     ephemeralListener.Start();
     using var fixedPortListener = new TcpListener(IPAddress.Loopback, deniedPort);
     ExpectSocketAccessDenied(fixedPortListener.Start);
+}
+
+static void RunEmptyPermissionClaims(string deniedFile)
+{
+    var permissions = LandlockPermissions.Handle(FileSystemAccess.WriteFile);
+    permissions.Activate();
+
+    ExpectAccessDenied(() => File.AppendAllText(deniedFile, "denied"));
+    try
+    {
+        permissions.Activate();
+        throw new InvalidOperationException("Expected repeated activation to fail.");
+    }
+    catch (InvalidOperationException exception) when (
+        exception.Message.Contains("already been activated", StringComparison.Ordinal))
+    {
+    }
 }
 
 static void RunNetworkClaims()

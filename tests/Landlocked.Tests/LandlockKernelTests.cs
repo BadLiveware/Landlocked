@@ -231,6 +231,20 @@ public sealed class LandlockKernelTests
     }
 
     [Fact]
+    public async Task Empty_claims_activate_a_deny_all_policy_and_cannot_reactivate()
+    {
+        RequireLandlock();
+
+        using var fixture = new TemporaryDirectory();
+        var deniedFile = Path.Combine(fixture.Path, "denied.txt");
+        File.WriteAllText(deniedFile, "original");
+
+        await RunScenario("empty-permission-claims", deniedFile);
+
+        Assert.Equal("original", File.ReadAllText(deniedFile));
+    }
+
+    [Fact]
     public async Task Udp_policy_allows_only_configured_destination_ports()
     {
         RequireNetworkAccess(NetworkAccess.Udp);

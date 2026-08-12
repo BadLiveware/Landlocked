@@ -56,6 +56,21 @@ public sealed class DependencyInjectionTests
     }
 
     [Fact]
+    public void Network_only_registration_exposes_network_access_to_contributors()
+    {
+        var services = new ServiceCollection();
+        services.AddLandlockedNetwork(NetworkAccess.ConnectTcp);
+        services.AddLandlockPermissionContributor<NetworkContributor>();
+        services.AddLandlockPermissionContributor<FailingContributor>();
+        using var provider = services.BuildServiceProvider();
+        var contributor = provider.GetRequiredService<NetworkContributor>();
+
+        Assert.Throws<InvalidOperationException>(() => provider.ActivateLandlock());
+        Assert.Equal(FileSystemAccess.None, contributor.HandledFileSystemAccess);
+        Assert.Equal(NetworkAccess.ConnectTcp, contributor.HandledNetworkAccess);
+    }
+
+    [Fact]
     public void Contributors_require_the_root_Landlocked_registration()
     {
         var services = new ServiceCollection();
@@ -138,6 +153,23 @@ public sealed class DependencyInjectionTests
         Assert.Throws<InvalidOperationException>(() => provider.ActivateLandlock());
         Assert.Throws<InvalidOperationException>(() => provider.ActivateLandlock());
         Assert.Equal(1, counting.RegistrationCount);
+    }
+
+    [Fact]
+    public void Retrying_a_contributor_failure_preserves_the_registration_trace()
+    {
+        var services = new ServiceCollection();
+        services.AddLandlocked(FileSystemAccess.WriteFile);
+        services.AddLandlockPermissionContributor<FailingContributor>();
+        using var provider = services.BuildServiceProvider();
+
+        var firstFailure = Assert.Throws<InvalidOperationException>(() => provider.ActivateLandlock());
+        var originalTrace = firstFailure.StackTrace;
+        var secondFailure = Assert.Throws<InvalidOperationException>(() => provider.ActivateLandlock());
+
+        Assert.Same(firstFailure, secondFailure);
+        Assert.Contains("RegisterPermissions", originalTrace, StringComparison.Ordinal);
+        Assert.Contains("RegisterPermissions", secondFailure.StackTrace, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -166,7 +166,9 @@ var permissions = serviceProvider.ActivateLandlock();
 `AddLandlockPermissionContributor<T>` registers `T` as a singleton and exposes that same instance through
 `ILandlockPermissionContributor`, so the module can inject its concrete permission service and later call `Release`.
 The contributor receives only `ILandlockPermissionRegistry`; it can declare claims but cannot activate the process or
-inspect other contributors. Do not replace its concrete DI registration after
+inspect other contributors. Custom registry implementations that handle network rights must override
+`HandledNetworkAccess`; its default `None` value exists for compatibility and fails closed by registering no network
+allowances. Do not replace a contributor's concrete DI registration after
 `AddLandlockPermissionContributor<T>`—activation detects and rejects lifetime or identity changes. Contributor
 construction and registration must not recursively activate Landlock. A contributor failure is terminal for that
 service provider because earlier modules may retain claims from the abandoned registration; rebuild the provider
@@ -182,7 +184,9 @@ native error when relevant. `Landlock.Restrict` throws:
 
 - `PlatformNotSupportedException` when Linux, the architecture, ABI 8 synchronization, or a requested access right
   is unavailable.
-- `LandlockException` when a native policy operation fails. It includes the operation and Linux `errno`.
+- `LandlockException` when a native policy operation fails. It includes the operation and Linux `errno`. Adding a
+  network rule is the sole exception: `EAFNOSUPPORT` is ignored when the kernel has no INET stack because TCP and UDP
+  operations are already unavailable, so the result remains fail-closed and any filesystem restrictions still apply.
 - Argument exceptions when a policy is empty, contains unknown rights, or allows rights it does not handle.
 
 A failed operation does not install that policy layer. The irreversible `no_new_privs` prerequisite and final TSYNC
