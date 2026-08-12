@@ -2,7 +2,7 @@ namespace Landlocked.DependencyInjection;
 
 internal sealed class LandlockActivationCoordinator
 {
-    private readonly object _sync = new();
+    private readonly Lock _sync = new();
     private readonly IServiceProvider _serviceProvider;
     private readonly LandlockRegistrationConfiguration _configuration;
     private LandlockPermissions? _configuredPermissions;

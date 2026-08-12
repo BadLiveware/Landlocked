@@ -2,7 +2,7 @@ namespace Landlocked;
 
 public sealed class LandlockPermissions
 {
-    private readonly object _sync = new();
+    private readonly Lock _sync = new();
     private readonly List<LandlockPermissionClaim> _claims = [];
     private LandlockPolicy? _effectivePolicy;
     private bool _isActivated;

@@ -5,7 +5,7 @@ namespace Landlocked;
 public static class Landlock
 {
     internal const int MinimumProcessSynchronizationAbi = 8;
-    private static readonly object RestrictionLock = new();
+    private static readonly Lock RestrictionLock = new();
 
     public static LandlockSupport GetSupport() => LandlockSupport.Detect();
 
