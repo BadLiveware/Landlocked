@@ -51,7 +51,9 @@ internal sealed class LandlockActivationCoordinator
         try
         {
             var contributors = _configuration.ResolveContributors(_serviceProvider);
-            var permissions = LandlockPermissions.Handle(_configuration.HandledAccess);
+            var permissions = LandlockPermissions.Handle(
+                _configuration.HandledFileSystemAccess,
+                _configuration.HandledNetworkAccess);
             var registry = new LandlockPermissionRegistry(permissions);
             foreach (var contributor in contributors)
             {
@@ -76,7 +78,11 @@ internal sealed class LandlockActivationCoordinator
 
     private sealed class LandlockPermissionRegistry(LandlockPermissions permissions) : ILandlockPermissionRegistry
     {
-        public FileSystemAccess HandledAccess => permissions.HandledAccess;
+        public FileSystemAccess HandledAccess => HandledFileSystemAccess;
+
+        public FileSystemAccess HandledFileSystemAccess => permissions.HandledFileSystemAccess;
+
+        public NetworkAccess HandledNetworkAccess => permissions.HandledNetworkAccess;
 
         public LandlockPermissionClaim Claim(string? name = null) => permissions.Claim(name);
     }

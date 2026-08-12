@@ -1,6 +1,8 @@
 using Landlocked;
 using Landlocked.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection;
+using System.Net;
+using System.Net.Sockets;
 
 if (args.Length == 0)
 {
@@ -54,6 +56,15 @@ try
             break;
         case "di-permission-contributors":
             RunDependencyInjectionContributors(args[1], args[2], args[3], args[4], args[5], args[6]);
+            break;
+        case "tcp-network-policy":
+            RunTcpNetworkPolicy();
+            break;
+        case "network-claims":
+            RunNetworkClaims();
+            break;
+        case "udp-network-policy":
+            RunUdpNetworkPolicy();
             break;
         default:
             Console.Error.WriteLine($"Unknown scenario: {args[0]}");
@@ -434,6 +445,104 @@ static void RunDependencyInjectionContributors(
     second.Release();
     ExpectAccessDenied(() => File.AppendAllText(secondFile, "after-second\n"));
     ExpectAccessDenied(() => File.AppendAllText(sharedFile, "after-second\n"));
+}
+
+static void RunTcpNetworkPolicy()
+{
+    using var allowedListener = CreateTcpListener();
+    using var deniedListener = CreateTcpListener();
+    var allowedPort = GetPort(allowedListener);
+    var deniedPort = GetPort(deniedListener);
+
+    var policy = LandlockPolicy
+        .HandleNetwork(NetworkAccess.Tcp)
+        .AllowPort(allowedPort, NetworkAccess.ConnectTcp)
+        .AllowPort(0, NetworkAccess.BindTcp);
+    Landlock.Restrict(policy);
+
+    ConnectTcp(allowedPort);
+    ExpectSocketAccessDenied(() => ConnectTcp(deniedPort));
+
+    using var ephemeralListener = new TcpListener(IPAddress.Loopback, 0);
+    ephemeralListener.Start();
+    using var fixedPortListener = new TcpListener(IPAddress.Loopback, deniedPort);
+    ExpectSocketAccessDenied(fixedPortListener.Start);
+}
+
+static void RunNetworkClaims()
+{
+    using var firstListener = CreateTcpListener();
+    using var secondListener = CreateTcpListener();
+    var firstPort = GetPort(firstListener);
+    var secondPort = GetPort(secondListener);
+
+    var permissions = LandlockPermissions.HandleNetwork(NetworkAccess.ConnectTcp);
+    var first = permissions.Claim("first").AllowPort(firstPort, NetworkAccess.ConnectTcp);
+    var second = permissions.Claim("second").AllowPort(secondPort, NetworkAccess.ConnectTcp);
+    permissions.Activate();
+
+    ConnectTcp(firstPort);
+    ConnectTcp(secondPort);
+
+    first.Release();
+    ExpectSocketAccessDenied(() => ConnectTcp(firstPort));
+    ConnectTcp(secondPort);
+
+    second.Release();
+    ExpectSocketAccessDenied(() => ConnectTcp(secondPort));
+}
+
+static void RunUdpNetworkPolicy()
+{
+    using var allowedReceiver = new UdpClient(new IPEndPoint(IPAddress.Loopback, 0));
+    using var deniedReceiver = new UdpClient(new IPEndPoint(IPAddress.Loopback, 0));
+    var allowedPort = checked((ushort)((IPEndPoint)allowedReceiver.Client.LocalEndPoint!).Port);
+    var deniedPort = checked((ushort)((IPEndPoint)deniedReceiver.Client.LocalEndPoint!).Port);
+
+    var policy = LandlockPolicy
+        .HandleNetwork(NetworkAccess.Udp)
+        .AllowPort(allowedPort, NetworkAccess.ConnectSendUdp)
+        .AllowPort(0, NetworkAccess.BindUdp);
+    Landlock.Restrict(policy);
+
+    SendUdp(allowedPort);
+    ExpectSocketAccessDenied(() => SendUdp(deniedPort));
+}
+
+static TcpListener CreateTcpListener()
+{
+    var listener = new TcpListener(IPAddress.Loopback, 0);
+    listener.Start();
+    return listener;
+}
+
+static ushort GetPort(TcpListener listener) =>
+    checked((ushort)((IPEndPoint)listener.LocalEndpoint).Port);
+
+static void ConnectTcp(ushort port)
+{
+    using var client = new TcpClient();
+    client.Connect(IPAddress.Loopback, port);
+}
+
+static void SendUdp(ushort port)
+{
+    using var client = new UdpClient();
+    _ = client.Send([1], new IPEndPoint(IPAddress.Loopback, port));
+}
+
+static void ExpectSocketAccessDenied(Action action)
+{
+    try
+    {
+        action();
+    }
+    catch (SocketException exception) when (exception.SocketErrorCode == SocketError.AccessDenied)
+    {
+        return;
+    }
+
+    throw new InvalidOperationException("The network operation unexpectedly succeeded.");
 }
 
 static void ReleaseClaim(

@@ -13,6 +13,7 @@ internal static partial class LinuxNative
     private const uint CreateRulesetVersion = 1U << 0;
 
     internal const uint PathBeneathRule = 1;
+    internal const uint NetworkPortRule = 2;
     internal const uint RestrictSelfThreadSync = 1U << 3;
     private const int CurrentWorkingDirectory = -100;
     private const ulong OpenPath = 0x200000;
@@ -65,6 +66,17 @@ internal static partial class LinuxNative
             LandlockAddRuleSystemCall,
             rulesetDescriptor,
             PathBeneathRule,
+            (nint)attributes,
+            0);
+        return CaptureResult(result);
+    }
+
+    internal static unsafe NativeResult AddNetworkPortRule(int rulesetDescriptor, LandlockNetworkPortAttributes* attributes)
+    {
+        var result = SystemCall4(
+            LandlockAddRuleSystemCall,
+            rulesetDescriptor,
+            NetworkPortRule,
             (nint)attributes,
             0);
         return CaptureResult(result);
@@ -144,5 +156,12 @@ internal static partial class LinuxNative
     {
         internal ulong AllowedAccess;
         internal int ParentDescriptor;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct LandlockNetworkPortAttributes
+    {
+        internal ulong AllowedAccess;
+        internal ulong Port;
     }
 }

@@ -27,28 +27,53 @@ public static class Landlock
             throw new PlatformNotSupportedException(support.Reason);
         }
 
-        var unsupportedAccess = policy.HandledAccess & ~support.SupportedFileSystemAccess;
-        if (unsupportedAccess != FileSystemAccess.None)
+        var unsupportedFileSystemAccess = policy.HandledFileSystemAccess & ~support.SupportedFileSystemAccess;
+        if (unsupportedFileSystemAccess != FileSystemAccess.None)
         {
             throw new PlatformNotSupportedException(
-                $"Landlock ABI {support.AbiVersion} does not support '{unsupportedAccess}'.");
+                $"Landlock ABI {support.AbiVersion} does not support filesystem access '{unsupportedFileSystemAccess}'.");
+        }
+
+        var unsupportedNetworkAccess = policy.HandledNetworkAccess & ~support.SupportedNetworkAccess;
+        if (unsupportedNetworkAccess != NetworkAccess.None)
+        {
+            throw new PlatformNotSupportedException(
+                $"Landlock ABI {support.AbiVersion} does not support network access '{unsupportedNetworkAccess}'.");
         }
 
         var rulesetAttributes = new LinuxNative.LandlockRulesetAttributes
         {
-            HandledFileSystemAccess = (ulong)policy.HandledAccess,
+            HandledFileSystemAccess = (ulong)policy.HandledFileSystemAccess,
+            HandledNetworkAccess = (ulong)policy.HandledNetworkAccess,
         };
 
         var createResult = LinuxNative.CreateRuleset(&rulesetAttributes);
         ThrowIfFailed(createResult, "create ruleset");
 
         using var ruleset = SafeFileDescriptor.Own(createResult.Value);
-        foreach (var rule in policy.Rules)
+        foreach (var rule in policy.PathRules)
         {
             AddPathRule(ruleset, rule);
         }
 
+        foreach (var rule in policy.NetworkRules)
+        {
+            AddNetworkRule(ruleset, rule);
+        }
+
         EnforceProcessWide(ruleset.Descriptor);
+    }
+
+    private static unsafe void AddNetworkRule(SafeFileDescriptor ruleset, NetworkPortRule rule)
+    {
+        var attributes = new LinuxNative.LandlockNetworkPortAttributes
+        {
+            AllowedAccess = (ulong)rule.AllowedAccess,
+            Port = rule.Port,
+        };
+
+        var addResult = LinuxNative.AddNetworkPortRule(ruleset.Descriptor, &attributes);
+        ThrowIfFailed(addResult, $"add network port rule '{rule.Port}'");
     }
 
     private static void EnforceProcessWide(int rulesetDescriptor)

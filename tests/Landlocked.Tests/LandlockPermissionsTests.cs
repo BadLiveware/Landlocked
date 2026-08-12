@@ -11,6 +11,12 @@ public sealed class LandlockPermissionsTests
     }
 
     [Fact]
+    public void Existing_default_handle_call_remains_unambiguous()
+    {
+        Assert.Throws<ArgumentException>(() => LandlockPermissions.Handle(default));
+    }
+
+    [Fact]
     public void Claim_names_must_not_be_blank()
     {
         var permissions = LandlockPermissions.Handle(FileSystemAccess.WriteFile);
@@ -25,6 +31,26 @@ public sealed class LandlockPermissionsTests
         var claim = permissions.Claim("module");
 
         Assert.Throws<ArgumentException>(() => claim.Allow(".", FileSystemAccess.ReadFile));
+    }
+
+    [Fact]
+    public void Claims_can_only_allow_handled_network_rights()
+    {
+        var permissions = LandlockPermissions.HandleNetwork(NetworkAccess.ConnectTcp);
+        var claim = permissions.Claim("module");
+
+        Assert.Throws<ArgumentException>(() => claim.AllowPort(443, NetworkAccess.BindTcp));
+    }
+
+    [Fact]
+    public void Combined_permissions_expose_both_handled_sets()
+    {
+        var permissions = LandlockPermissions.Handle(
+            FileSystemAccess.WriteFile,
+            NetworkAccess.ConnectTcp);
+
+        Assert.Equal(FileSystemAccess.WriteFile, permissions.HandledFileSystemAccess);
+        Assert.Equal(NetworkAccess.ConnectTcp, permissions.HandledNetworkAccess);
     }
 
     [Fact]

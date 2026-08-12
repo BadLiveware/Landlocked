@@ -198,6 +198,45 @@ public sealed class LandlockKernelTests
         Assert.Equal("claim-remains-active\n", File.ReadAllText(writableFile));
     }
 
+    [Fact]
+    public async Task Tcp_policy_allows_only_configured_connect_and_bind_ports()
+    {
+        RequireLandlock();
+
+        await RunScenario("tcp-network-policy");
+    }
+
+    [Fact]
+    public async Task Releasing_network_claims_removes_only_their_ports()
+    {
+        RequireLandlock();
+
+        await RunScenario("network-claims");
+    }
+
+    [Fact]
+    public async Task Udp_policy_allows_only_configured_destination_ports()
+    {
+        RequireNetworkAccess(NetworkAccess.Udp);
+
+        await RunScenario("udp-network-policy");
+    }
+
+    private static void RequireNetworkAccess(NetworkAccess requiredAccess)
+    {
+        var support = Landlock.GetSupport();
+        if (!support.IsAvailable)
+        {
+            Assert.Skip(support.Reason);
+        }
+
+        var unsupported = requiredAccess & ~support.SupportedNetworkAccess;
+        if (unsupported != NetworkAccess.None)
+        {
+            Assert.Skip($"Landlock ABI {support.AbiVersion} does not support '{unsupported}'.");
+        }
+    }
+
     private static void RequireLandlock()
     {
         var support = Landlock.GetSupport();

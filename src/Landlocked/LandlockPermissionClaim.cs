@@ -23,7 +23,10 @@ public sealed class LandlockPermissionClaim
     internal bool IsReleasedCore { get; set; }
 
     public LandlockPermissionClaim Allow(string path, FileSystemAccess allowedAccess) =>
-        Owner.AddPermission(this, path, allowedAccess);
+        Owner.AddFileSystemPermission(this, path, allowedAccess);
+
+    public LandlockPermissionClaim AllowPort(ushort port, NetworkAccess allowedAccess) =>
+        Owner.AddNetworkPermission(this, port, allowedAccess);
 
     public void Release() => Owner.Release(this);
 }

@@ -1,9 +1,9 @@
 # Landlocked
 
-Landlocked is a dependency-free .NET library for progressively restricting a Linux process with
-[Landlock](https://docs.kernel.org/userspace-api/landlock.html). Each policy layer is applied atomically to every
-existing CLR thread. When Landlocked is the process's sole Landlock policy manager, successive calls can only
-reduce effective access.
+Landlocked is a dependency-free .NET library for progressively restricting a Linux process's filesystem and network
+access with [Landlock](https://docs.kernel.org/userspace-api/landlock.html). Each policy layer is applied atomically
+to every existing CLR thread. When Landlocked is the process's sole Landlock policy manager, successive calls can
+only reduce effective access.
 
 ## Requirements
 
@@ -36,6 +36,32 @@ Landlock.Restrict(workspacePolicy);
 After `Restrict` returns, new file-content and hierarchy mutations are allowed beneath `workspace` and denied
 elsewhere. Reads remain unaffected because the policy handles only mutation rights.
 
+Network policies use the same deny-by-default handled-rights model. TCP bind/connect requires ABI 4, which is
+available under Landlocked's ABI 8 minimum. UDP bind/connect-send requires ABI 10 and must be checked through
+`LandlockSupport.SupportedNetworkAccess`. Rules identify an action and a port, not a host:
+
+```csharp
+var networkPolicy = LandlockPolicy
+    .HandleNetwork(NetworkAccess.Tcp)
+    .AllowPort(443, NetworkAccess.ConnectTcp)
+    .AllowPort(0, NetworkAccess.BindTcp);
+
+Landlock.Restrict(networkPolicy);
+```
+
+This allows new outbound TCP connections to remote port 443 and local TCP binds requesting kernel-assigned ephemeral
+ports. Other handled TCP connects and binds are denied. Use a combined policy when one atomic layer should restrict
+both resources:
+
+```csharp
+var combinedPolicy = LandlockPolicy
+    .Handle(
+        FileSystemAccess.ContentAndHierarchyMutation,
+        NetworkAccess.ConnectTcp)
+    .Allow(workspace, FileSystemAccess.ContentAndHierarchyMutation)
+    .AllowPort(443, NetworkAccess.ConnectTcp);
+```
+
 Apply another layer when the process needs fewer capabilities:
 
 ```csharp
@@ -65,7 +91,8 @@ that Landlock will mediate, and each module registers its own allowance before a
 
 ```csharp
 var permissions = LandlockPermissions.Handle(
-    FileSystemAccess.ContentAndHierarchyMutation);
+    FileSystemAccess.ContentAndHierarchyMutation,
+    NetworkAccess.ConnectTcp);
 
 var compiler = permissions
     .Claim("compiler")
@@ -74,7 +101,8 @@ var compiler = permissions
 
 var reporter = permissions
     .Claim("reporter")
-    .Allow(outputDirectory, FileSystemAccess.ContentAndHierarchyMutation);
+    .Allow(outputDirectory, FileSystemAccess.ContentAndHierarchyMutation)
+    .AllowPort(443, NetworkAccess.ConnectTcp);
 
 permissions.Activate();
 
@@ -126,7 +154,9 @@ Register the fixed handled access set and each contributor before building the s
 combined policy before starting work that depends on the sandbox:
 
 ```csharp
-services.AddLandlocked(FileSystemAccess.ContentAndHierarchyMutation);
+services.AddLandlocked(
+    FileSystemAccess.ContentAndHierarchyMutation,
+    NetworkAccess.ConnectTcp);
 services.AddLandlockPermissionContributor<CompilerPermissions>();
 
 using var serviceProvider = services.BuildServiceProvider();
@@ -147,8 +177,8 @@ activation can be retried without invoking successfully collected contributors a
 
 ## Support and failures
 
-`Landlock.GetSupport()` reports the detected ABI, supported filesystem rights, availability state, and native error
-when relevant. `Landlock.Restrict` throws:
+`Landlock.GetSupport()` reports the detected ABI, supported filesystem and network rights, availability state, and
+native error when relevant. `Landlock.Restrict` throws:
 
 - `PlatformNotSupportedException` when Linux, the architecture, ABI 8 synchronization, or a requested access right
   is unavailable.
@@ -166,7 +196,13 @@ Landlock mediates new access; it does not revoke capabilities already represente
 
 - A file descriptor opened before restriction keeps the access established when it was opened. Close obsolete file,
   directory, socket, and device descriptors before tightening a phase.
-- Existing network connections remain usable. This version exposes filesystem policies only.
+- Existing network connections remain usable. Landlock checks TCP bind/connect and UDP bind/connect/send-to
+  operations; ordinary sends on an already connected TCP socket are not separately mediated.
+- Network rules match only protocol action and port. They cannot distinguish IP addresses, CIDR ranges, hostnames,
+  interfaces, loopback from remote hosts, or one HTTPS origin from another on port 443. Use a network namespace,
+  nftables, cgroup/eBPF policy, or a controlled proxy when those boundaries matter.
+- UDP clients that auto-bind need `BindUdp` on port `0`, plus `ConnectSendUdp` on each permitted destination port.
+  DNS normally needs UDP destination port 53 and TCP connect port 53 for fallback.
 - Policy roots may not contain symbolic links. Landlocked resolves them with `openat2(RESOLVE_NO_SYMLINKS)` and
   fails the policy instead of silently following a link to another hierarchy.
 - Rules follow filesystem objects and the existing mount topology, not purely lexical paths. A bind mount beneath

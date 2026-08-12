@@ -4,11 +4,14 @@ namespace Landlocked.DependencyInjection;
 
 internal sealed class LandlockRegistrationConfiguration(
     IServiceCollection services,
-    FileSystemAccess handledAccess)
+    FileSystemAccess handledFileSystemAccess,
+    NetworkAccess handledNetworkAccess)
 {
     private readonly List<IContributorRegistration> _contributorRegistrations = [];
 
-    internal FileSystemAccess HandledAccess { get; } = handledAccess;
+    internal FileSystemAccess HandledFileSystemAccess { get; } = handledFileSystemAccess;
+
+    internal NetworkAccess HandledNetworkAccess { get; } = handledNetworkAccess;
 
     internal bool HasContributor(Type contributorType) =>
         _contributorRegistrations.Any(registration => registration.ContributorType == contributorType);

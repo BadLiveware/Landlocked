@@ -7,17 +7,29 @@ public static class LandlockServiceCollectionExtensions
 {
     public static IServiceCollection AddLandlocked(
         this IServiceCollection services,
-        FileSystemAccess handledAccess)
+        FileSystemAccess handledAccess) =>
+        AddLandlocked(services, handledAccess, NetworkAccess.None);
+
+    public static IServiceCollection AddLandlockedNetwork(
+        this IServiceCollection services,
+        NetworkAccess handledAccess) =>
+        AddLandlocked(services, FileSystemAccess.None, handledAccess);
+
+    public static IServiceCollection AddLandlocked(
+        this IServiceCollection services,
+        FileSystemAccess handledFileSystemAccess,
+        NetworkAccess handledNetworkAccess)
     {
         ArgumentNullException.ThrowIfNull(services);
-        _ = LandlockPermissions.Handle(handledAccess);
+        _ = LandlockPermissions.Handle(handledFileSystemAccess, handledNetworkAccess);
 
         var existingConfiguration = services
             .FirstOrDefault(descriptor => descriptor.ServiceType == typeof(LandlockRegistrationConfiguration))?
             .ImplementationInstance as LandlockRegistrationConfiguration;
         if (existingConfiguration is not null)
         {
-            if (existingConfiguration.HandledAccess != handledAccess)
+            if (existingConfiguration.HandledFileSystemAccess != handledFileSystemAccess ||
+                existingConfiguration.HandledNetworkAccess != handledNetworkAccess)
             {
                 throw new InvalidOperationException(
                     "Landlocked has already been registered with a different handled access set.");
@@ -26,7 +38,10 @@ public static class LandlockServiceCollectionExtensions
             return services;
         }
 
-        var configuration = new LandlockRegistrationConfiguration(services, handledAccess);
+        var configuration = new LandlockRegistrationConfiguration(
+            services,
+            handledFileSystemAccess,
+            handledNetworkAccess);
         services.AddSingleton(configuration);
         services.AddSingleton(serviceProvider =>
             new LandlockActivationCoordinator(serviceProvider, configuration));

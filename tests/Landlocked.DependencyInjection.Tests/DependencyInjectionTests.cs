@@ -14,6 +14,14 @@ public sealed class DependencyInjectionTests
     }
 
     [Fact]
+    public void Existing_default_registration_call_remains_unambiguous()
+    {
+        var services = new ServiceCollection();
+
+        Assert.Throws<ArgumentException>(() => services.AddLandlocked(default));
+    }
+
+    [Fact]
     public void Repeated_registration_requires_the_same_handled_access()
     {
         var services = new ServiceCollection();
@@ -21,6 +29,21 @@ public sealed class DependencyInjectionTests
 
         Assert.Same(services, services.AddLandlocked(FileSystemAccess.WriteFile));
         Assert.Throws<InvalidOperationException>(() => services.AddLandlocked(FileSystemAccess.ReadFile));
+    }
+
+    [Fact]
+    public void Combined_registration_exposes_network_access_to_contributors()
+    {
+        var services = new ServiceCollection();
+        services.AddLandlocked(FileSystemAccess.WriteFile, NetworkAccess.ConnectTcp);
+        services.AddLandlockPermissionContributor<NetworkContributor>();
+        services.AddLandlockPermissionContributor<FailingContributor>();
+        using var provider = services.BuildServiceProvider();
+        var contributor = provider.GetRequiredService<NetworkContributor>();
+
+        Assert.Throws<InvalidOperationException>(() => provider.ActivateLandlock());
+        Assert.Equal(FileSystemAccess.WriteFile, contributor.HandledFileSystemAccess);
+        Assert.Equal(NetworkAccess.ConnectTcp, contributor.HandledNetworkAccess);
     }
 
     [Fact]
@@ -162,6 +185,20 @@ public sealed class DependencyInjectionTests
         {
             RegistrationCount++;
             _ = permissions.Claim(nameof(CountingContributor));
+        }
+    }
+
+    private sealed class NetworkContributor : ILandlockPermissionContributor
+    {
+        internal FileSystemAccess HandledFileSystemAccess { get; private set; }
+
+        internal NetworkAccess HandledNetworkAccess { get; private set; }
+
+        public void RegisterPermissions(ILandlockPermissionRegistry permissions)
+        {
+            HandledFileSystemAccess = permissions.HandledFileSystemAccess;
+            HandledNetworkAccess = permissions.HandledNetworkAccess;
+            _ = permissions.Claim(nameof(NetworkContributor)).AllowPort(443, NetworkAccess.ConnectTcp);
         }
     }
 

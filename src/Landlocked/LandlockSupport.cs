@@ -9,6 +9,8 @@ public readonly record struct LandlockSupport(
     FileSystemAccess SupportedFileSystemAccess,
     int? NativeErrorCode)
 {
+    public NetworkAccess SupportedNetworkAccess { get; init; }
+
     public bool IsAvailable => Availability == LandlockAvailability.Available;
 
     public string Reason
@@ -42,35 +44,58 @@ public readonly record struct LandlockSupport(
     {
         if (!OperatingSystem.IsLinux())
         {
-            return new LandlockSupport(LandlockAvailability.UnsupportedOperatingSystem, 0, FileSystemAccess.None, null);
+            return new LandlockSupport(
+                LandlockAvailability.UnsupportedOperatingSystem,
+                0,
+                FileSystemAccess.None,
+                null);
         }
 
         var architecture = RuntimeInformation.ProcessArchitecture;
         if (architecture != Architecture.X64 && architecture != Architecture.Arm64)
         {
-            return new LandlockSupport(LandlockAvailability.UnsupportedArchitecture, 0, FileSystemAccess.None, null);
+            return new LandlockSupport(
+                LandlockAvailability.UnsupportedArchitecture,
+                0,
+                FileSystemAccess.None,
+                null);
         }
 
         var abi = LinuxNative.QueryAbiVersion();
         if (abi.Value < 0)
         {
-            return new LandlockSupport(LandlockAvailability.KernelUnavailable, 0, FileSystemAccess.None, abi.ErrorCode);
+            return new LandlockSupport(
+                LandlockAvailability.KernelUnavailable,
+                0,
+                FileSystemAccess.None,
+                abi.ErrorCode);
         }
 
-        var supported = SupportedAccessForAbi(abi.Value);
+        var supportedFileSystemAccess = SupportedFileSystemAccessForAbi(abi.Value);
+        var supportedNetworkAccess = SupportedNetworkAccessForAbi(abi.Value);
         if (abi.Value < Landlock.MinimumProcessSynchronizationAbi)
         {
             return new LandlockSupport(
                 LandlockAvailability.ProcessSynchronizationUnavailable,
                 abi.Value,
-                supported,
-                null);
+                supportedFileSystemAccess,
+                null)
+            {
+                SupportedNetworkAccess = supportedNetworkAccess,
+            };
         }
 
-        return new LandlockSupport(LandlockAvailability.Available, abi.Value, supported, null);
+        return new LandlockSupport(
+            LandlockAvailability.Available,
+            abi.Value,
+            supportedFileSystemAccess,
+            null)
+        {
+            SupportedNetworkAccess = supportedNetworkAccess,
+        };
     }
 
-    private static FileSystemAccess SupportedAccessForAbi(int abiVersion)
+    private static FileSystemAccess SupportedFileSystemAccessForAbi(int abiVersion)
     {
         var supported = FileSystemAccess.Execute |
                         FileSystemAccess.WriteFile |
@@ -104,6 +129,17 @@ public readonly record struct LandlockSupport(
         if (abiVersion >= 9)
         {
             supported |= FileSystemAccess.ResolveUnixSocket;
+        }
+
+        return supported;
+    }
+
+    private static NetworkAccess SupportedNetworkAccessForAbi(int abiVersion)
+    {
+        var supported = abiVersion >= 4 ? NetworkAccess.Tcp : NetworkAccess.None;
+        if (abiVersion >= 10)
+        {
+            supported |= NetworkAccess.Udp;
         }
 
         return supported;
