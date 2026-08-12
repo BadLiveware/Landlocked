@@ -4,9 +4,9 @@ public interface ILandlockPermissionRegistry
 {
     FileSystemAccess HandledAccess { get; }
 
-    FileSystemAccess HandledFileSystemAccess { get; }
+    FileSystemAccess HandledFileSystemAccess => HandledAccess;
 
-    NetworkAccess HandledNetworkAccess { get; }
+    NetworkAccess HandledNetworkAccess => NetworkAccess.None;
 
     LandlockPermissionClaim Claim(string? name = null);
 }

@@ -63,6 +63,9 @@ try
         case "network-claims":
             RunNetworkClaims();
             break;
+        case "combined-policy":
+            RunCombinedPolicy(args[1], args[2]);
+            break;
         case "udp-network-policy":
             RunUdpNetworkPolicy();
             break;
@@ -490,6 +493,27 @@ static void RunNetworkClaims()
 
     second.Release();
     ExpectSocketAccessDenied(() => ConnectTcp(secondPort));
+}
+
+static void RunCombinedPolicy(string writableDirectory, string readOnlyFile)
+{
+    using var allowedListener = CreateTcpListener();
+    using var deniedListener = CreateTcpListener();
+    var allowedPort = GetPort(allowedListener);
+    var deniedPort = GetPort(deniedListener);
+
+    var policy = LandlockPolicy
+        .Handle(
+            FileSystemAccess.ContentAndHierarchyMutation,
+            NetworkAccess.ConnectTcp)
+        .Allow(writableDirectory, FileSystemAccess.ContentAndHierarchyMutation)
+        .AllowPort(allowedPort, NetworkAccess.ConnectTcp);
+    Landlock.Restrict(policy);
+
+    File.WriteAllText(Path.Combine(writableDirectory, "combined.txt"), "combined");
+    ExpectAccessDenied(() => File.AppendAllText(readOnlyFile, "outside"));
+    ConnectTcp(allowedPort);
+    ExpectSocketAccessDenied(() => ConnectTcp(deniedPort));
 }
 
 static void RunUdpNetworkPolicy()

@@ -4,6 +4,7 @@ namespace Landlocked;
 
 public static class Landlock
 {
+    private const int AddressFamilyNotSupported = 97;
     internal const int MinimumProcessSynchronizationAbi = 8;
     private static readonly Lock RestrictionLock = new();
 
@@ -73,7 +74,10 @@ public static class Landlock
         };
 
         var addResult = LinuxNative.AddNetworkPortRule(ruleset.Descriptor, &attributes);
-        ThrowIfFailed(addResult, $"add network port rule '{rule.Port}'");
+        if (addResult.Value < 0 && addResult.ErrorCode != AddressFamilyNotSupported)
+        {
+            ThrowIfFailed(addResult, $"add network port rule '{rule.Port}'");
+        }
     }
 
     private static void EnforceProcessWide(int rulesetDescriptor)

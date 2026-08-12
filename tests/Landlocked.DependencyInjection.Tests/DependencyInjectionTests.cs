@@ -32,6 +32,15 @@ public sealed class DependencyInjectionTests
     }
 
     [Fact]
+    public void Legacy_registry_implementations_receive_compatible_defaults()
+    {
+        ILandlockPermissionRegistry registry = new LegacyRegistry();
+
+        Assert.Equal(FileSystemAccess.WriteFile, registry.HandledFileSystemAccess);
+        Assert.Equal(NetworkAccess.None, registry.HandledNetworkAccess);
+    }
+
+    [Fact]
     public void Combined_registration_exposes_network_access_to_contributors()
     {
         var services = new ServiceCollection();
@@ -154,6 +163,14 @@ public sealed class DependencyInjectionTests
         using var provider = new ServiceCollection().BuildServiceProvider();
 
         Assert.Throws<InvalidOperationException>(() => provider.ActivateLandlock());
+    }
+
+    private sealed class LegacyRegistry : ILandlockPermissionRegistry
+    {
+        public FileSystemAccess HandledAccess => FileSystemAccess.WriteFile;
+
+        public LandlockPermissionClaim Claim(string? name = null) =>
+            throw new NotSupportedException();
     }
 
     private sealed class TestContributor : ILandlockPermissionContributor

@@ -215,6 +215,22 @@ public sealed class LandlockKernelTests
     }
 
     [Fact]
+    public async Task Combined_policy_enforces_filesystem_and_network_rights()
+    {
+        RequireLandlock();
+
+        using var fixture = new TemporaryDirectory();
+        var writableDirectory = Directory.CreateDirectory(Path.Combine(fixture.Path, "writable")).FullName;
+        var readOnlyFile = Path.Combine(fixture.Path, "outside.txt");
+        File.WriteAllText(readOnlyFile, "original");
+
+        await RunScenario("combined-policy", writableDirectory, readOnlyFile);
+
+        Assert.Equal("combined", File.ReadAllText(Path.Combine(writableDirectory, "combined.txt")));
+        Assert.Equal("original", File.ReadAllText(readOnlyFile));
+    }
+
+    [Fact]
     public async Task Udp_policy_allows_only_configured_destination_ports()
     {
         RequireNetworkAccess(NetworkAccess.Udp);
