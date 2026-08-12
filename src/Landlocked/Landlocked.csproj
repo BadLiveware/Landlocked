@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net9.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <AssemblyName>Landlocked</AssemblyName>
     <RootNamespace>Landlocked</RootNamespace>
     <Description>Progressive, process-wide Landlock restrictions for .NET on Linux.</Description>

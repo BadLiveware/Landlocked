@@ -9,7 +9,7 @@ reduce effective access.
 
 - Linux 7.0 or newer with Landlock enabled (Landlock ABI 8 provides `LANDLOCK_RESTRICT_SELF_TSYNC`)
 - x86-64 or ARM64
-- .NET 9 or newer
+- .NET 10 or newer
 
 The library refuses to enforce a policy when process-wide thread synchronization is unavailable. It never silently
 falls back to restricting only the calling thread.
