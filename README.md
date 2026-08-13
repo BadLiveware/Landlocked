@@ -1,9 +1,32 @@
 # Landlocked
 
-Landlocked is a dependency-free .NET library for progressively restricting a Linux process's filesystem and network
-access with [Landlock](https://docs.kernel.org/userspace-api/landlock.html). Each policy layer is applied atomically
-to every existing CLR thread. When Landlocked is the process's sole Landlock policy manager, successive calls can
-only reduce effective access.
+Landlocked is a .NET library for progressively restricting a Linux process's filesystem and network access with
+[Landlock](https://docs.kernel.org/userspace-api/landlock.html). Each policy layer is applied atomically to every
+existing CLR thread. When Landlocked is the process's sole Landlock policy manager, successive calls can only reduce
+effective access.
+
+## Choose an API layer
+
+Each package builds on the layer below it, so applications can choose the lowest level that provides the guarantees
+they need:
+
+| Package | API level | Adds |
+| --- | --- | --- |
+| `Landlocked.Native` | Direct bindings | Kernel-shaped constants, structs, syscalls, return values, and `errno` |
+| `Landlocked.LowLevel` | Idiomatic C# | Owned ruleset handles, captured errors, safe path opening, and typed operations |
+| `Landlocked` | Application API | Immutable policies, claims, ABI validation, serialized process-wide enforcement, and monotonic tightening |
+| `Landlocked.DependencyInjection` | DI integration | Contributor discovery and coordinated activation through Microsoft.Extensions.DependencyInjection |
+
+Most applications should reference `Landlocked`. The two lower layers are expert APIs: their callers own ABI
+compatibility, operation ordering, and thread synchronization. Do not mix their restriction operations with
+`Landlocked` in one process, because independently managed Landlock domains can invalidate the high-level package's
+process-wide monotonicity guarantees.
+
+The dependency direction is strictly low-to-high:
+
+```text
+Landlocked.Native <- Landlocked.LowLevel <- Landlocked <- Landlocked.DependencyInjection
+```
 
 ## Requirements
 
@@ -123,8 +146,8 @@ so claim lifetimes should represent coarse application phases rather than indivi
 ### Dependency injection
 
 The optional `Landlocked.DependencyInjection` package discovers permission contributors from a Microsoft dependency
-injection service provider while keeping the core `Landlocked` package dependency-free. Each module implements the
-contributor interface and retains only its own claim:
+injection service provider while keeping Microsoft DI dependencies out of the lower packages. Each module implements
+the contributor interface and retains only its own claim:
 
 ```csharp
 using Landlocked.DependencyInjection;
@@ -228,7 +251,13 @@ Landlock mediates new access; it does not revoke capabilities already represente
 ```bash
 dotnet build Landlocked.slnx
 dotnet test Landlocked.slnx
+dotnet pack src/Landlocked.Native/Landlocked.Native.csproj -c Release -o artifacts
+
+dotnet pack src/Landlocked.LowLevel/Landlocked.LowLevel.csproj -c Release -o artifacts
+
 dotnet pack src/Landlocked/Landlocked.csproj -c Release -o artifacts
+
+dotnet pack src/Landlocked.DependencyInjection/Landlocked.DependencyInjection.csproj -c Release -o artifacts
 ```
 
 Kernel enforcement tests run in subprocesses because a Landlock domain cannot be removed from a test process. They

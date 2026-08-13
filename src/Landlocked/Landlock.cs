@@ -1,4 +1,4 @@
-using Landlocked.Internal;
+using Landlocked.LowLevel;
 
 namespace Landlocked;
 
@@ -14,6 +14,10 @@ public static class Landlock
     public static void Restrict(LandlockPolicy policy)
     {
         ArgumentNullException.ThrowIfNull(policy);
+        if (!OperatingSystem.IsLinux())
+        {
+            throw new PlatformNotSupportedException("Landlock is available only on Linux.");
+        }
 
         lock (RestrictionLock)
         {
@@ -37,7 +41,8 @@ public static class Landlock
         }
     }
 
-    private static unsafe void RestrictCore(LandlockPolicy policy)
+    [System.Runtime.Versioning.SupportedOSPlatform("linux")]
+    private static void RestrictCore(LandlockPolicy policy)
     {
         var support = GetSupport();
         if (!support.IsAvailable)
@@ -59,48 +64,48 @@ public static class Landlock
                 $"Landlock ABI {support.AbiVersion} does not support network access '{unsupportedNetworkAccess}'.");
         }
 
-        var rulesetAttributes = new LinuxNative.LandlockRulesetAttributes
-        {
-            HandledFileSystemAccess = (ulong)policy.HandledFileSystemAccess,
-            HandledNetworkAccess = (ulong)policy.HandledNetworkAccess,
-        };
-
-        var createResult = LinuxNative.CreateRuleset(&rulesetAttributes);
+        var createResult = LandlockApi.CreateRuleset(
+            (LandlockFileSystemAccess)policy.HandledFileSystemAccess,
+            (LandlockNetworkAccess)policy.HandledNetworkAccess,
+            out var ruleset);
         ThrowIfFailed(createResult, "create ruleset");
 
-        using var ruleset = SafeFileDescriptor.Own(createResult.Value);
-        foreach (var rule in policy.PathRules)
+        var createdRuleset = ruleset
+            ?? throw new InvalidOperationException("A successful ruleset creation did not return a descriptor.");
+        using (createdRuleset)
         {
-            AddPathRule(ruleset, rule);
-        }
+            foreach (var rule in policy.PathRules)
+            {
+                AddPathRule(createdRuleset, rule);
+            }
 
-        foreach (var rule in policy.NetworkRules)
-        {
-            AddNetworkRule(ruleset, rule);
-        }
+            foreach (var rule in policy.NetworkRules)
+            {
+                AddNetworkRule(createdRuleset, rule);
+            }
 
-        EnforceProcessWide(ruleset.Descriptor);
+            EnforceProcessWide(createdRuleset);
+        }
     }
 
-    private static unsafe void AddNetworkRule(SafeFileDescriptor ruleset, NetworkPortRule rule)
+    [System.Runtime.Versioning.SupportedOSPlatform("linux")]
+    private static void AddNetworkRule(LandlockRuleset ruleset, NetworkPortRule rule)
     {
-        var attributes = new LinuxNative.LandlockNetworkPortAttributes
-        {
-            AllowedAccess = (ulong)rule.AllowedAccess,
-            Port = rule.Port,
-        };
-
-        var addResult = LinuxNative.AddNetworkPortRule(ruleset.Descriptor, &attributes);
-        if (addResult.Value < 0 && addResult.ErrorCode != AddressFamilyNotSupported)
+        var addResult = LandlockApi.AddNetworkPortRule(
+            ruleset,
+            rule.Port,
+            (LandlockNetworkAccess)rule.AllowedAccess);
+        if (!addResult.IsSuccess && addResult.ErrorCode != AddressFamilyNotSupported)
         {
             ThrowIfFailed(addResult, $"add network port rule '{rule.Port}'");
         }
     }
 
-    private static void EnforceProcessWide(int rulesetDescriptor)
+    [System.Runtime.Versioning.SupportedOSPlatform("linux")]
+    private static void EnforceProcessWide(LandlockRuleset ruleset)
     {
-        NativeResult privilegesResult = default;
-        NativeResult restrictResult = default;
+        LandlockResult privilegesResult = default;
+        LandlockResult restrictResult = default;
         var restrictionAttempted = false;
         Exception? enforcementFailure = null;
 
@@ -109,14 +114,14 @@ public static class Landlock
         {
             try
             {
-                privilegesResult = LinuxNative.SetNoNewPrivilegesForCallingThread();
-                if (privilegesResult.Value < 0)
+                privilegesResult = LandlockApi.SetNoNewPrivilegesForCallingThread();
+                if (!privilegesResult.IsSuccess)
                 {
                     return;
                 }
 
                 restrictionAttempted = true;
-                restrictResult = LinuxNative.RestrictAllThreads(rulesetDescriptor);
+                restrictResult = LandlockApi.RestrictAllThreads(ruleset);
             }
             catch (Exception exception)
             {
@@ -140,25 +145,22 @@ public static class Landlock
         }
     }
 
-    private static unsafe void AddPathRule(SafeFileDescriptor ruleset, PathAccessRule rule)
+    [System.Runtime.Versioning.SupportedOSPlatform("linux")]
+    private static void AddPathRule(LandlockRuleset ruleset, PathAccessRule rule)
     {
-        var openResult = LinuxNative.OpenPathDescriptor(rule.Path);
-        ThrowIfFailed(openResult, $"open path '{rule.Path}'");
-
-        using var parent = SafeFileDescriptor.Own(openResult.Value);
-        var attributes = new LinuxNative.LandlockPathBeneathAttributes
-        {
-            AllowedAccess = (ulong)rule.AllowedAccess,
-            ParentDescriptor = parent.Descriptor,
-        };
-
-        var addResult = LinuxNative.AddPathBeneathRule(ruleset.Descriptor, &attributes);
-        ThrowIfFailed(addResult, $"add path rule '{rule.Path}'");
+        var addResult = LandlockApi.AddPathBeneathRule(
+            ruleset,
+            rule.Path,
+            (LandlockFileSystemAccess)rule.AllowedAccess);
+        var operation = addResult.Operation == LandlockRuleOperation.OpenPath
+            ? $"open path '{rule.Path}'"
+            : $"add path rule '{rule.Path}'";
+        ThrowIfFailed(addResult.Result, operation);
     }
 
-    private static void ThrowIfFailed(NativeResult result, string operation)
+    private static void ThrowIfFailed(LandlockResult result, string operation)
     {
-        if (result.Value < 0)
+        if (!result.IsSuccess)
         {
             throw new LandlockException(operation, result.ErrorCode);
         }

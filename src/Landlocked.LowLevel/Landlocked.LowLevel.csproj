@@ -1,9 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
-    <AssemblyName>Landlocked</AssemblyName>
-    <RootNamespace>Landlocked</RootNamespace>
-    <Description>Progressive, process-wide Landlock restrictions for .NET on Linux.</Description>
+    <AssemblyName>Landlocked.LowLevel</AssemblyName>
+    <RootNamespace>Landlocked.LowLevel</RootNamespace>
+    <Description>Resource-safe, idiomatic .NET access to Linux Landlock rulesets.</Description>
     <Version>0.1.0</Version>
     <Authors>Landlocked contributors</Authors>
     <PackageReadmeFile>README.md</PackageReadmeFile>
@@ -13,10 +13,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="../Landlocked.LowLevel/Landlocked.LowLevel.csproj" />
+    <ProjectReference Include="../Landlocked.Native/Landlocked.Native.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <InternalsVisibleTo Include="Landlocked.Tests" />
-    <None Include="../../README.md" Pack="true" PackagePath="/" />
+    <None Include="README.md" Pack="true" PackagePath="/" />
   </ItemGroup>
 </Project>

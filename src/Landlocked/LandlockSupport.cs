@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
-using Landlocked.Internal;
+using System.Runtime.Versioning;
+using Landlocked.LowLevel;
 
 namespace Landlocked;
 
@@ -11,6 +12,7 @@ public readonly record struct LandlockSupport(
 {
     public NetworkAccess SupportedNetworkAccess { get; init; }
 
+    [SupportedOSPlatformGuard("linux")]
     public bool IsAvailable => Availability == LandlockAvailability.Available;
 
     public string Reason
@@ -61,7 +63,7 @@ public readonly record struct LandlockSupport(
                 null);
         }
 
-        var abi = LinuxNative.QueryAbiVersion();
+        var abi = LandlockApi.QueryAbiVersion();
         if (abi.Value < 0)
         {
             return new LandlockSupport(

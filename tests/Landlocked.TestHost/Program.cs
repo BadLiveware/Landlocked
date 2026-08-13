@@ -184,8 +184,14 @@ static void RunFailedApplication(string missingPath, string writableFile)
         Landlock.Restrict(policy);
         throw new InvalidOperationException("The invalid policy unexpectedly succeeded.");
     }
-    catch (LandlockException)
+    catch (LandlockException exception)
     {
+        if (exception.Operation != $"open path '{missingPath}'")
+        {
+            throw new InvalidOperationException(
+                $"Unexpected failure operation: {exception.Operation}",
+                exception);
+        }
     }
 
     File.AppendAllText(writableFile, "still-unrestricted\n");
@@ -202,8 +208,14 @@ static void RunSymbolicLinkRule(string symbolicLink, string writableFile)
         Landlock.Restrict(policy);
         throw new InvalidOperationException("The symbolic-link policy unexpectedly succeeded.");
     }
-    catch (LandlockException)
+    catch (LandlockException exception)
     {
+        if (exception.Operation != $"open path '{symbolicLink}'")
+        {
+            throw new InvalidOperationException(
+                $"Unexpected failure operation: {exception.Operation}",
+                exception);
+        }
     }
 
     File.AppendAllText(writableFile, "symlink-rejected\n");
