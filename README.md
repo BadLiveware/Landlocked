@@ -271,3 +271,7 @@ NuGet.org publishing uses GitHub Actions trusted publishing, so the repository s
 Create a GitHub release with a `v`-prefixed semantic-version tag, such as `v0.1.0` or `v0.2.0-beta.1`. The publish workflow tests the solution, applies the tag-derived version to `Landlocked`, `Landlocked.LowLevel`, `Landlocked.Native`, and `Landlocked.DependencyInjection`, uploads the packages as a workflow artifact, and publishes them to NuGet.org through OIDC.
 
 Package IDs and versions are immutable once accepted by NuGet.org; publish corrections with a new version.
+
+## License
+
+Landlocked is licensed under the [MIT License](LICENSE).
