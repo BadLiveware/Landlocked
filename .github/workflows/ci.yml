@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build-test-pack:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore Landlocked.slnx
+
+      - name: Build
+        run: dotnet build Landlocked.slnx --configuration Release --no-restore -p:ContinuousIntegrationBuild=true
+
+      - name: Test
+        run: dotnet test Landlocked.slnx --configuration Release --no-build
+
+      - name: Pack
+        shell: bash
+        run: |
+          mkdir -p artifacts
+          dotnet pack src/Landlocked.Native/Landlocked.Native.csproj --configuration Release --no-build --output artifacts -p:ContinuousIntegrationBuild=true
+          dotnet pack src/Landlocked.LowLevel/Landlocked.LowLevel.csproj --configuration Release --no-build --output artifacts -p:ContinuousIntegrationBuild=true
+          dotnet pack src/Landlocked/Landlocked.csproj --configuration Release --no-build --output artifacts -p:ContinuousIntegrationBuild=true
+          dotnet pack src/Landlocked.DependencyInjection/Landlocked.DependencyInjection.csproj --configuration Release --no-build --output artifacts -p:ContinuousIntegrationBuild=true
+
+      - name: Upload packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuget-packages
+          path: artifacts/*.nupkg
+          if-no-files-found: error

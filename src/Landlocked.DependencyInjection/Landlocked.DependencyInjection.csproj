@@ -4,8 +4,6 @@
     <AssemblyName>Landlocked.DependencyInjection</AssemblyName>
     <RootNamespace>Landlocked.DependencyInjection</RootNamespace>
     <Description>Microsoft dependency injection integration for Landlocked permission claims.</Description>
-    <Version>0.1.0</Version>
-    <Authors>Landlocked contributors</Authors>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <IsTrimmable>true</IsTrimmable>
     <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
