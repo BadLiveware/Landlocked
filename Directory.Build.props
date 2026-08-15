@@ -12,6 +12,7 @@
     <RepositoryUrl>https://github.com/BadLiveware/Landlocked.git</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageTags>linux;landlock;sandbox;security;filesystem;network</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
   </PropertyGroup>
 </Project>
