@@ -4,8 +4,6 @@
     <AssemblyName>Landlocked.Native</AssemblyName>
     <RootNamespace>Landlocked.Native</RootNamespace>
     <Description>Direct .NET bindings for the Linux Landlock userspace ABI.</Description>
-    <Version>0.1.0</Version>
-    <Authors>Landlocked contributors</Authors>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <IsTrimmable>true</IsTrimmable>
     <EnableTrimAnalyzer>true</EnableTrimAnalyzer>

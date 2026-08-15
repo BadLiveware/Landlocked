@@ -4,8 +4,6 @@
     <AssemblyName>Landlocked.LowLevel</AssemblyName>
     <RootNamespace>Landlocked.LowLevel</RootNamespace>
     <Description>Resource-safe, idiomatic .NET access to Linux Landlock rulesets.</Description>
-    <Version>0.1.0</Version>
-    <Authors>Landlocked contributors</Authors>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <IsTrimmable>true</IsTrimmable>
     <EnableTrimAnalyzer>true</EnableTrimAnalyzer>

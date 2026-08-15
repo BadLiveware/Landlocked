@@ -263,3 +263,11 @@ dotnet pack src/Landlocked.DependencyInjection/Landlocked.DependencyInjection.cs
 Kernel enforcement tests run in subprocesses because a Landlock domain cannot be removed from a test process. They
 cover recursive write containment, progressive and concurrent tightening, failed application, symbolic-link root
 rejection, pre-opened descriptors, and TSYNC application to CLR threads created before restriction.
+
+## Publishing
+
+NuGet.org publishing uses GitHub Actions trusted publishing, so the repository stores no long-lived API key. The `badliveware` NuGet.org account trusts `BadLiveware/Landlocked` and the workflow file `publish.yml`.
+
+Create a GitHub release with a `v`-prefixed semantic-version tag, such as `v0.1.0` or `v0.2.0-beta.1`. The publish workflow tests the solution, applies the tag-derived version to `Landlocked`, `Landlocked.LowLevel`, `Landlocked.Native`, and `Landlocked.DependencyInjection`, uploads the packages as a workflow artifact, and publishes them to NuGet.org through OIDC.
+
+Package IDs and versions are immutable once accepted by NuGet.org; publish corrections with a new version.
